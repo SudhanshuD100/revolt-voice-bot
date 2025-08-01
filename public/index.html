@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Revolt Voice Assistant</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <h2>Rev - Revolt Assistant</h2>
+    </div>
+    <div class="chat-box" id="chatBox"></div>
+    <div class="chat-footer">
+      <input type="text" id="userInput" placeholder="Type your message..." />
+      <button id="sendBtn">Send</button>
+    </div>
+    <button id="micBtn" class="mic-btn">🎤</button>
+  </div>
+
+  <script>
+    const ws = new WebSocket("ws://localhost:3000");
+    const chatBox = document.getElementById("chatBox");
+    let recognition;
+    let isSpeaking = false;
+    let isListening = false;
+
+    // ✅ Initialize Speech Recognition
+    if ("webkitSpeechRecognition" in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.lang = "en-US";
+      recognition.interimResults = false;
+      recognition.continuous = false;
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        addMessage(transcript, "user");
+        ws.send(transcript);
+      };
+
+      recognition.onerror = (err) => {
+        console.error("Speech Recognition Error:", err);
+      };
+
+      recognition.onend = () => {
+        console.log("Recognition stopped");
+        if (!isSpeaking && isListening) {
+          console.log("Auto-restarting mic...");
+          recognition.start();
+        }
+      };
+    } else {
+      alert("Speech Recognition not supported in this browser (use Chrome).");
+    }
+
+    ws.onopen = () => console.log("✅ Connected to server");
+
+    ws.onmessage = (event) => {
+      const { text } = JSON.parse(event.data);
+      addMessage(text, "bot");
+
+      // ✅ Stop listening before speaking
+      recognition.stop();
+      isSpeaking = true;
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+
+      // ✅ When bot finishes speaking, restart mic
+      utterance.onend = () => {
+        console.log("Bot finished speaking → Restart mic if listening mode is ON");
+        isSpeaking = false;
+        if (isListening) recognition.start();
+      };
+
+      speechSynthesis.cancel(); // Stop previous speech
+      speechSynthesis.speak(utterance);
+    };
+
+    document.getElementById("sendBtn").onclick = sendMessage;
+    document
+      .getElementById("userInput")
+      .addEventListener("keypress", (e) => {
+        if (e.key === "Enter") sendMessage();
+      });
+
+    function sendMessage() {
+      const input = document.getElementById("userInput");
+      if (input.value.trim() !== "") {
+        addMessage(input.value, "user");
+        ws.send(input.value);
+        input.value = "";
+      }
+    }
+
+    function addMessage(message, sender) {
+      const msgDiv = document.createElement("div");
+      msgDiv.classList.add("message", sender);
+      msgDiv.innerText = message;
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // ✅ Mic Button Toggle
+    document.getElementById("micBtn").onclick = () => {
+      if (isListening) {
+        console.log("🎤 Stopping mic...");
+        recognition.stop();
+        isListening = false;
+        document.getElementById("micBtn").style.background = "#ff2e63"; // normal color
+      } else {
+        console.log("🎤 Starting mic...");
+        speechSynthesis.cancel(); // stop bot speech immediately
+        recognition.start();
+        isListening = true;
+        document.getElementById("micBtn").style.background = "#00c853"; // green when active
+      }
+    };
+  </script>
+</body>
+</html>
